@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+
+import polib
+import sys
+import os
+
+tokentypes = ["%d", "%s", "%B", "%'d"]
+
+for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
+    for file in files:
+        if file.endswith(".mo"):
+            mo = polib.mofile(os.path.join(root, file))
+            path, junk = os.path.split(root)
+            path, locale = os.path.split(path)
+
+            for entry in mo:
+                id_tokens = []
+                str_tokens = []
+                msgid = entry.msgid
+                msgstr = entry.msgstr
+
+                for idx in range(len(msgid)):
+                    if msgid[idx] == "%":
+                        for tt in tokentypes:
+                            if msgid[idx:idx+len(tt)] == tt:
+                                id_tokens.append(tt)
+
+                for idx in range(len(msgstr)):
+                    if msgstr[idx] == "%":
+                        for tt in tokentypes:
+                            if msgstr[idx:idx+len(tt)] == tt:
+                                str_tokens.append(tt)
+
+                if msgstr != "":
+                    if (len(id_tokens) != len(str_tokens)):
+                        print "%s: Error: Number of tokens does not match: " % (locale), entry.msgid, "  ...  ", entry.msgstr
+                    else:
+                        for j in range(len(id_tokens)):
+                            if id_tokens[j] != str_tokens[j]:
+                                print "%s: Error: tokens not in correct order: " % (locale), entry.msgid, "  ...  ", entry.msgstr
