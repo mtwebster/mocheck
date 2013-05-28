@@ -7,6 +7,9 @@ from gi.repository import Gtk, GObject, GLib, Pango
 
 tokentypes = ["%d", "%s", "%B", "%'d"]
 
+GOOD = 0
+BAD_MISCOUNT = 1
+BAD_MISMATCH = 2
 
 class Mo:
     def __init__(self, inst, locale):
@@ -21,6 +24,7 @@ class Main:
         self.builder.add_from_file("/home/mtwebster/bin/mocheck/mocheck.glade")
         self.treebox = self.builder.get_object("treebox")
         self.window = self.builder.get_object("window")
+        self.status = self.builder.get_object("status")
         self.refresh_button = self.builder.get_object("refresh")
         self.window.connect("destroy", Gtk.main_quit)
 
@@ -28,41 +32,55 @@ class Main:
 
         self.treeview = Gtk.TreeView()
         self.treeview.set_rules_hint(True)
-        column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=1)
+        column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=2)
         self.treeview.append_column(column)
 
         cr = Gtk.CellRendererText()
-        column = Gtk.TreeViewColumn("MsgId", cr, markup=2)
+        column = Gtk.TreeViewColumn("MsgId", cr, markup=3)
         cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
-        cr.set_property('wrap-width', 500)
+        cr.set_property('wrap-width', 450)
         self.treeview.append_column(column)
 
         cr = Gtk.CellRendererText()
-        column = Gtk.TreeViewColumn("MsgStr", cr, markup=3)
+        column = Gtk.TreeViewColumn("MsgStr", cr, markup=4)
         cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
-        cr.set_property('wrap-width', 500)
+        cr.set_property('wrap-width', 450)
         self.treeview.append_column(column)
 
         self.treebox.pack_start(self.treeview, True, True, 2)
+
+        self.treeview.get_selection().connect("changed", lambda x: self.selection_changed());
 
         self.refresh_model()
 
         self.window.show_all()
 
+    def selection_changed(self):
+        model, treeiter = self.treeview.get_selection().get_selected()
+        if treeiter:
+            entry = model.get_value(treeiter, 1)
+            status = self.check_entry(entry)
+            if status == BAD_MISCOUNT:
+                self.status.set_text("Number of tokens does not match")
+            elif status == BAD_MISMATCH:
+                self.status.set_text("Tokens not in correct order")
+            else:
+                self.status.set_text("")
 
     def on_refresh_clicked(self, button):
         self.check_files()
         self.refresh_model()
 
     def refresh_model(self):
-        self.model = Gtk.TreeStore(object, str, str, str)
+        self.model = Gtk.TreeStore(object, object, str, str, str)
         for mo in self.bad_mos:
             for entry in mo.bad_entries:
                 iter = self.model.insert_before(None, None)
                 self.model.set_value(iter, 0, mo)
-                self.model.set_value(iter, 1, mo.locale)
-                self.model.set_value(iter, 2, entry.msgid)
-                self.model.set_value(iter, 3, entry.msgstr)
+                self.model.set_value(iter, 1, entry)
+                self.model.set_value(iter, 2, mo.locale)
+                self.model.set_value(iter, 3, entry.msgid)
+                self.model.set_value(iter, 4, entry.msgstr)
         self.treeview.set_model(self.model)
 
     def check_files(self):
@@ -77,38 +95,42 @@ class Main:
                     path, junk = os.path.split(root)
                     path, locale = os.path.split(path)
                     for entry in mo_inst:
-                        id_tokens = []
-                        str_tokens = []
-                        msgid = entry.msgid
-                        msgstr = entry.msgstr
-
-                        for idx in range(len(msgid)):
-                            if msgid[idx] == "%":
-                                for tt in tokentypes:
-                                    if msgid[idx:idx+len(tt)] == tt:
-                                        id_tokens.append(tt)
-
-                        for idx in range(len(msgstr)):
-                            if msgstr[idx] == "%":
-                                for tt in tokentypes:
-                                    if msgstr[idx:idx+len(tt)] == tt:
-                                        str_tokens.append(tt)
-
-                        if msgstr != "":
-                            if (len(id_tokens) != len(str_tokens)):
-                                print "%s: Error: Number of tokens does not match: " % (locale), entry.msgid, "  ...  ", entry.msgstr
-                                self.register_bad(mo, entry)
-                            else:
-                                for j in range(len(id_tokens)):
-                                    if id_tokens[j] != str_tokens[j]:
-                                        print "%s: Error: tokens not in correct order: " % (locale), entry.msgid, "  ...  ", entry.msgstr
-                                        self.register_bad(mo, entry)
+                        res = self.check_entry(entry)
+                        if res > GOOD:
+                            self.register_bad(mo, entry)
 
     def register_bad(self, mo, entry):
         if mo not in self.bad_mos:
             self.bad_mos.append(mo)
         if entry not in mo.bad_entries:
             mo.bad_entries.append(entry)
+
+    def check_entry(self, entry):
+        id_tokens = []
+        str_tokens = []
+        msgid = entry.msgid
+        msgstr = entry.msgstr
+
+        for idx in range(len(msgid)):
+            if msgid[idx] == "%":
+                for tt in tokentypes:
+                    if msgid[idx:idx+len(tt)] == tt:
+                        id_tokens.append(tt)
+
+        for idx in range(len(msgstr)):
+            if msgstr[idx] == "%":
+                for tt in tokentypes:
+                    if msgstr[idx:idx+len(tt)] == tt:
+                        str_tokens.append(tt)
+
+        if msgstr != "":
+            if (len(id_tokens) != len(str_tokens)):
+                return BAD_MISCOUNT
+            else:
+                for j in range(len(id_tokens)):
+                    if id_tokens[j] != str_tokens[j]:
+                        return BAD_MISMATCH
+        return GOOD
 
 if __name__ == "__main__":
     GObject.threads_init()
