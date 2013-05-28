@@ -3,38 +3,71 @@
 import polib
 import sys
 import os
+from gi.repository import Gtk, GObject, GLib
 
 tokentypes = ["%d", "%s", "%B", "%'d"]
 
-for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
-    for file in files:
-        if file.endswith(".mo"):
-            mo = polib.mofile(os.path.join(root, file))
-            path, junk = os.path.split(root)
-            path, locale = os.path.split(path)
 
-            for entry in mo:
-                id_tokens = []
-                str_tokens = []
-                msgid = entry.msgid
-                msgstr = entry.msgstr
+class Mo():
+    def __init__(self, entries, path):
+        self.entries = entries
+        self.bad_entries = []
+        self.path = path
 
-                for idx in range(len(msgid)):
-                    if msgid[idx] == "%":
-                        for tt in tokentypes:
-                            if msgid[idx:idx+len(tt)] == tt:
-                                id_tokens.append(tt)
+class Po():
+    def __init__(self, entries, path):
+        self.entries = entries
+        self.bad_entries = []
+        self.path = path
 
-                for idx in range(len(msgstr)):
-                    if msgstr[idx] == "%":
-                        for tt in tokentypes:
-                            if msgstr[idx:idx+len(tt)] == tt:
-                                str_tokens.append(tt)
+class Main:
+    def __init__(self):
+        self.bad_mos = []
+        self.check_files()
 
-                if msgstr != "":
-                    if (len(id_tokens) != len(str_tokens)):
-                        print "%s: Error: Number of tokens does not match: " % (locale), entry.msgid, "  ...  ", entry.msgstr
-                    else:
-                        for j in range(len(id_tokens)):
-                            if id_tokens[j] != str_tokens[j]:
-                                print "%s: Error: tokens not in correct order: " % (locale), entry.msgid, "  ...  ", entry.msgstr
+    def check_files(self):
+        for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
+            for file in files:
+                if file.endswith(".mo"):
+                    mo = Mo(polib.mofile(os.path.join(root, file)), os.path.join(root, file))
+                    path, junk = os.path.split(root)
+                    path, locale = os.path.split(path)
+
+                    for entry in mo.entries:
+                        id_tokens = []
+                        str_tokens = []
+                        msgid = entry.msgid
+                        msgstr = entry.msgstr
+
+                        for idx in range(len(msgid)):
+                            if msgid[idx] == "%":
+                                for tt in tokentypes:
+                                    if msgid[idx:idx+len(tt)] == tt:
+                                        id_tokens.append(tt)
+
+                        for idx in range(len(msgstr)):
+                            if msgstr[idx] == "%":
+                                for tt in tokentypes:
+                                    if msgstr[idx:idx+len(tt)] == tt:
+                                        str_tokens.append(tt)
+
+                        if msgstr != "":
+                            if (len(id_tokens) != len(str_tokens)):
+                                print "%s: Error: Number of tokens does not match: " % (locale), entry.msgid, "  ...  ", entry.msgstr
+                                self.register_bad(mo, entry)
+                            else:
+                                for j in range(len(id_tokens)):
+                                    if id_tokens[j] != str_tokens[j]:
+                                        print "%s: Error: tokens not in correct order: " % (locale), entry.msgid, "  ...  ", entry.msgstr
+                                        self.register_bad(mo, entry)
+
+    def register_bad(self, mo, entry):
+        if mo not in self.bad_mos:
+            self.bad_mos.append(mo)
+        if entry not in mo.bad_entries:
+            mo.bad_entries.append(entry)
+
+if __name__ == "__main__":
+    GObject.threads_init()
+    Main()
+    # Gtk.main()
