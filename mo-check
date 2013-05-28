@@ -3,41 +3,80 @@
 import polib
 import sys
 import os
-from gi.repository import Gtk, GObject, GLib
+from gi.repository import Gtk, GObject, GLib, Pango
 
 tokentypes = ["%d", "%s", "%B", "%'d"]
 
 
-class Mo():
-    def __init__(self, entries, path, locale):
-        self.entries = entries
+class Mo:
+    def __init__(self, inst, locale):
+        self.mofile = inst
         self.locale = locale
         self.bad_entries = []
-        self.path = path
-
-class Po():
-    def __init__(self, entries, path, locale):
-        self.entries = entries
-        self.locale = locale
-        self.bad_entries = []
-        self.path = path
 
 class Main:
     def __init__(self):
-        self.bad_mos = []
         self.check_files()
+        self.builder = Gtk.Builder()
+        self.builder.add_from_file("/home/mtwebster/bin/mocheck/mocheck.glade")
+        self.treebox = self.builder.get_object("treebox")
+        self.window = self.builder.get_object("window")
+        self.refresh_button = self.builder.get_object("refresh")
+        self.window.connect("destroy", Gtk.main_quit)
+
+        self.refresh_button.connect("clicked", self.on_refresh_clicked)
+
+        self.treeview = Gtk.TreeView()
+        self.treeview.set_rules_hint(True)
+        column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=1)
+        self.treeview.append_column(column)
+
+        cr = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn("MsgId", cr, markup=2)
+        cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
+        cr.set_property('wrap-width', 500)
+        self.treeview.append_column(column)
+
+        cr = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn("MsgStr", cr, markup=3)
+        cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
+        cr.set_property('wrap-width', 500)
+        self.treeview.append_column(column)
+
+        self.treebox.pack_start(self.treeview, True, True, 2)
+
+        self.refresh_model()
+
+        self.window.show_all()
+
+
+    def on_refresh_clicked(self, button):
+        self.check_files()
+        self.refresh_model()
+
+    def refresh_model(self):
+        self.model = Gtk.TreeStore(object, str, str, str)
+        for mo in self.bad_mos:
+            for entry in mo.bad_entries:
+                iter = self.model.insert_before(None, None)
+                self.model.set_value(iter, 0, mo)
+                self.model.set_value(iter, 1, mo.locale)
+                self.model.set_value(iter, 2, entry.msgid)
+                self.model.set_value(iter, 3, entry.msgstr)
+        self.treeview.set_model(self.model)
 
     def check_files(self):
+        self.bad_mos = []
         for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
             for file in files:
                 if file.endswith(".mo"):
                     path, junk = os.path.split(root)
                     path, locale = os.path.split(path)
-                    mo = Mo(polib.mofile(os.path.join(root, file)), os.path.join(root, file), locale)
+                    mo_inst = polib.mofile(os.path.join(root, file))
+                    mo = Mo(mo_inst, locale)
                     path, junk = os.path.split(root)
                     path, locale = os.path.split(path)
-
-                    for entry in mo.entries:
+                    for entry in mo_inst:
                         id_tokens = []
                         str_tokens = []
                         msgid = entry.msgid
@@ -74,4 +113,4 @@ class Main:
 if __name__ == "__main__":
     GObject.threads_init()
     Main()
-    # Gtk.main()
+    Gtk.main()
