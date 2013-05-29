@@ -6,7 +6,7 @@ import os
 import subprocess
 import thread
 import time
-from gi.repository import Gtk, GObject, GLib, Pango
+from gi.repository import Gtk, GObject, GLib, Pango, GdkPixbuf
 GObject.threads_init()
 
 ALLOWED = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -45,17 +45,21 @@ class TokenList(list):
             self.insert(position - 1, entry)
 
 class Mo:
-    def __init__(self, inst, locale):
+    def __init__(self, inst, locale, path):
         self.mofile = inst
         self.locale = locale
+        self.path = path
         self.bad_entries = []
 
 class ThreadedTreeView(Gtk.TreeView):
-    def __init__(self, progress, date_check):
+    def __init__(self, parent):
         Gtk.TreeView.__init__(self)
 
-        self.progress = progress
-        self.datecheck = date_check
+        self.progress = parent.progress
+        self.datecheck = parent.datecheck
+        self.revert = parent.revert
+        self.save = parent.save
+        self.dirty = False
         self._count = 0
         self.set_rules_hint(True)
         column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=2)
@@ -71,6 +75,13 @@ class ThreadedTreeView(Gtk.TreeView):
         column = Gtk.TreeViewColumn("MsgStr", cr, markup=4)
         cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
         cr.set_property('wrap-width', 450)
+        cr.set_property('editable', True)
+        cr.connect("edited", self.on_cell_edited)
+        self.append_column(column)
+
+        cr = Gtk.CellRendererPixbuf()
+        column = Gtk.TreeViewColumn("Dirty", cr, pixbuf=6)
+        column.set_cell_data_func(cr, self.dirty_pixbuf_func)
         self.append_column(column)
 
         self._loading_queue = []
@@ -81,6 +92,53 @@ class ThreadedTreeView(Gtk.TreeView):
 
         self._loaded_data = []
         self._loaded_data_lock = thread.allocate_lock()
+
+    def on_cell_edited(self, renderer, path, new_text):
+        self.model[path][4] = new_text
+        self.model[path][5] = new_text.decode('utf-8') != self.model[path][1].msgstr
+        self.update_buttons()
+
+    def dirty_pixbuf_func(self, col, cell, model, iter, data):
+        dirty = model.get_value(iter, 5)
+        if dirty:
+            if self.check_entry(model.get_value(iter, 1), model.get_value(iter, 4)) == GOOD:
+                cell.set_property("stock-id", "gtk-yes")
+            else:
+                cell.set_property("stock-id", "gtk-no")
+        else:
+            cell.set_property("stock-id", None)
+
+    def update_buttons(self):
+        self.dirty = False
+        dirty_iter = self.model.get_iter_first()
+        while dirty_iter != None:
+            dirty = self.model.get_value(dirty_iter, 5)
+            if dirty:
+                self.dirty = True
+            dirty_iter = self.model.iter_next(dirty_iter)
+        self.save.set_sensitive(self.dirty)
+        self.revert.set_sensitive(self.dirty)
+
+    def save_changes(self):
+        iter = self.model.get_iter_first()
+        while iter != None:
+            if self.model.get_value(iter, 5):
+                entry = self.model.get_value(iter, 1)
+                entry.msgstr = self.model.get_value(iter, 4)
+                self.model.get_value(iter, 0).mofile.save()
+                self.model.set_value(iter, 5, False)
+            iter = self.model.iter_next(iter)
+        self.update_buttons()
+
+    def revert_changes(self):
+        iter = self.model.get_iter_first()
+        while iter != None:
+            if self.model.get_value(iter, 5):
+                entry = self.model.get_value(iter, 1)
+                self.model.set_value(iter, 4, entry.msgstr) 
+                self.model.set_value(iter, 5, False)
+            iter = self.model.iter_next(iter)
+        self.update_buttons()
 
     def clear(self):
         self._count = 0
@@ -96,7 +154,7 @@ class ThreadedTreeView(Gtk.TreeView):
             self._loading_lock.acquire()
             is_loading = self._loading
             self._loading_lock.release()
-        self.model = Gtk.TreeStore(object, object, str, str, str)
+        self.model = Gtk.TreeStore(object, object, str, str, str, bool, GdkPixbuf.Pixbuf)
         self.set_model(self.model)
 
     def _check_loading_progress(self):
@@ -117,6 +175,7 @@ class ThreadedTreeView(Gtk.TreeView):
             self.model.set_value(iter, 2, i[2])
             self.model.set_value(iter, 3, i[3])
             self.model.set_value(iter, 4, i[4])
+            self.model.set_value(iter, 5, False) # dirty flag
             self._count += 1
             self.progress.set_text(str(self._count))
         return res
@@ -129,7 +188,7 @@ class ThreadedTreeView(Gtk.TreeView):
                     path, junk = os.path.split(root)
                     path, locale = os.path.split(path)
                     mo_inst = polib.mofile(os.path.join(root, file))
-                    mo = Mo(mo_inst, locale)
+                    mo = Mo(mo_inst, locale, os.path.join(root, file))
                     self.check_file(mo)
         self.progress.set_fraction(1.0)
 
@@ -174,17 +233,16 @@ class ThreadedTreeView(Gtk.TreeView):
         self._loading = False
         self._loading_lock.release()
 
-    def check_entry(self, entry):
+    def check_entry(self, entry, updated_val = None):
         id_tokens = TokenList()
         str_tokens = TokenList()
         msgid = entry.msgid
-        msgstr = entry.msgstr
+        if updated_val:
+            msgstr = updated_val
+        else:
+            msgstr = entry.msgstr
         id_date_count = 0
         str_date_count = 0
-        # for idx in range(len(msgstr)):
-        #     if msgstr[idx] == '"':
-        #         if msgstr[idx-1] != "\\":
-        #             return BAD_UNESCAPED_QUOTE
 
         for idx in range(len(msgid)):
             if msgid[idx] == "%":
@@ -251,8 +309,12 @@ class Main:
         self.window.connect("destroy", Gtk.main_quit)
         self.datecheck.connect("toggled", self.on_refresh_clicked)
         self.refresh_button.connect("clicked", self.on_refresh_clicked)
+        self.save = self.builder.get_object("save")
+        self.save.connect("clicked", self.on_save_clicked)
+        self.revert = self.builder.get_object("revert")
+        self.revert.connect("clicked", self.on_revert_clicked)
 
-        self.treeview = ThreadedTreeView(self.progress, self.datecheck)
+        self.treeview = ThreadedTreeView(self)
 
         self.treebox.pack_start(self.treeview, True, True, 2)
 
@@ -275,7 +337,32 @@ class Main:
                 self.status.set_text("")
 
     def on_refresh_clicked(self, button):
+        if self.treeview.dirty:
+            if not self.ask("There are unsaved changes - discard them?"):
+                return
         thread.start_new_thread(self.treeview.load_files, ())
+
+    def on_save_clicked(self, button):
+        self.treeview.save_changes()
+
+    def on_revert_clicked(self, button):
+        if self.treeview.dirty:
+            if self.ask("There are unsaved changes - discard them?"):
+                self.treeview.revert_changes()
+
+    def ask(self, msg):
+        dialog = Gtk.MessageDialog(None,
+                                   Gtk.DialogFlags.DESTROY_WITH_PARENT,
+                                   Gtk.MessageType.QUESTION,
+                                   Gtk.ButtonsType.YES_NO,
+                                   None)
+        dialog.set_default_size(400, 200)
+        dialog.set_markup(msg)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        return response == Gtk.ResponseType.YES
+
 
 if __name__ == "__main__":
     Main()
