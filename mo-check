@@ -3,9 +3,11 @@
 import polib
 import sys
 import os
-#from threading import Thread
+import subprocess
 import thread
+import time
 from gi.repository import Gtk, GObject, GLib, Pango
+GObject.threads_init()
 
 tokentypes = ["%d", "%s", "%B", "%'d"]
 
@@ -19,66 +21,74 @@ class Mo:
         self.locale = locale
         self.bad_entries = []
 
-class Main:
-    def __init__(self):
-        self.builder = Gtk.Builder()
-        self.builder.add_from_file("/home/mtwebster/bin/mocheck/mocheck.glade")
-        self.treebox = self.builder.get_object("treebox")
-        self.window = self.builder.get_object("window")
-        self.status = self.builder.get_object("status")
-        self.refresh_button = self.builder.get_object("refresh")
-        self.window.connect("destroy", Gtk.main_quit)
+class ThreadedTreeView(Gtk.TreeView):
+    def __init__(self, progress):
+        Gtk.TreeView.__init__(self)
 
-        self.refresh_button.connect("clicked", self.on_refresh_clicked)
-
-        self.treeview = Gtk.TreeView()
-        self.treeview.set_rules_hint(True)
+        self.progress = progress
+        self.set_rules_hint(True)
         column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=2)
-        self.treeview.append_column(column)
+        self.append_column(column)
 
         cr = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn("MsgId", cr, markup=3)
         cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
         cr.set_property('wrap-width', 450)
-        self.treeview.append_column(column)
+        self.append_column(column)
 
         cr = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn("MsgStr", cr, markup=4)
         cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
         cr.set_property('wrap-width', 450)
-        self.treeview.append_column(column)
+        self.append_column(column)
 
-        self.treebox.pack_start(self.treeview, True, True, 2)
+        self._loading_queue = []
+        self._loading_queue_lock = thread.allocate_lock()
 
-        self.treeview.get_selection().connect("changed", lambda x: self.selection_changed());
+        self._loading_lock = thread.allocate_lock()
+        self._loading = False
 
-        self.window.show_all()
+        self._loaded_data = []
+        self._loaded_data_lock = thread.allocate_lock()
 
-        self.threaded_refresh()
-
-    def threaded_refresh(self):
-        thread.start_new_thread( self.check_files, ())
-
-    def selection_changed(self):
-        model, treeiter = self.treeview.get_selection().get_selected()
-        if treeiter:
-            entry = model.get_value(treeiter, 1)
-            status = self.check_entry(entry)
-            if status == BAD_MISCOUNT:
-                self.status.set_text("Number of tokens does not match")
-            elif status == BAD_MISMATCH:
-                self.status.set_text("Tokens not in correct order")
-            else:
-                self.status.set_text("")
-
-    def on_refresh_clicked(self, button):
-        self.threaded_refresh()
-
-    def check_files(self):
-        print "thread start"
-        self.bad_mos = []
+    def clear(self):
+        self._loading_queue_lock.acquire()
+        self._loading_queue = []
+        self._loading_queue_lock.release()
+        
+        self._loading_lock.acquire()
+        is_loading = self._loading
+        self._loading_lock.release()
+        while is_loading:
+            time.sleep(0.1)
+            self._loading_lock.acquire()
+            is_loading = self._loading
+            self._loading_lock.release()
         self.model = Gtk.TreeStore(object, object, str, str, str)
-        self.treeview.set_model(self.model)
+        self.set_model(self.model)
+
+    def _check_loading_progress(self):
+        self._loading_lock.acquire()
+        self._loaded_data_lock.acquire()
+        res = self._loading
+        to_load = []
+        while len(self._loaded_data) > 0:
+            to_load.append(self._loaded_data[0])
+            self._loaded_data = self._loaded_data[1:]
+        self._loading_lock.release()
+        self._loaded_data_lock.release()
+
+        for i in to_load:
+            iter = self.model.insert_before(None, None)
+            self.model.set_value(iter, 0, i[0])
+            self.model.set_value(iter, 1, i[1])
+            self.model.set_value(iter, 2, i[2])
+            self.model.set_value(iter, 3, i[3])
+            self.model.set_value(iter, 4, i[4])
+        return res
+
+    def load_files(self):
+        self.clear()
         for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
             for file in files:
                 if file.endswith(".mo"):
@@ -86,24 +96,47 @@ class Main:
                     path, locale = os.path.split(path)
                     mo_inst = polib.mofile(os.path.join(root, file))
                     mo = Mo(mo_inst, locale)
-                    path, junk = os.path.split(root)
-                    path, locale = os.path.split(path)
-                    for entry in mo_inst:
-                        res = self.check_entry(entry)
-                        if res > GOOD:
-                            self.register_bad(mo, entry)
-                            iter = self.model.insert_before(None, None)
-                            self.model.set_value(iter, 0, mo)
-                            self.model.set_value(iter, 1, entry)
-                            self.model.set_value(iter, 2, mo.locale)
-                            self.model.set_value(iter, 3, entry.msgid)
-                            self.model.set_value(iter, 4, entry.msgstr)
+                    self.check_file(mo)
+        self.progress.set_fraction(1.0)
 
-    def register_bad(self, mo, entry):
-        if mo not in self.bad_mos:
-            self.bad_mos.append(mo)
-        if entry not in mo.bad_entries:
-            mo.bad_entries.append(entry)
+    def check_file(self, mofile):
+        self._loading_queue_lock.acquire()
+        self._loading_queue.append(mofile)
+        self._loading_queue_lock.release()
+        
+        start_loading = False
+        self._loading_lock.acquire()
+        if not self._loading:
+            self._loading = True
+            start_loading = True
+        self._loading_lock.release()
+        
+        if start_loading:
+            self.progress.pulse()
+            GObject.timeout_add(100, self._check_loading_progress)
+            thread.start_new_thread(self._do_load, ())
+
+    def _do_load(self):
+        finished = False
+        while not finished:
+            self._loading_queue_lock.acquire()
+            if len(self._loading_queue) == 0:
+                finished = True
+            else:
+                to_load = self._loading_queue[0]
+                self._loading_queue = self._loading_queue[1:]
+            self._loading_queue_lock.release()
+            if not finished:
+                for entry in to_load.mofile:
+                    res = self.check_entry(entry)
+                    if res > GOOD:
+                        self._loaded_data_lock.acquire()
+                        self._loaded_data.append((to_load, entry, to_load.locale, entry.msgid, entry.msgstr))
+                        self._loaded_data_lock.release()
+
+        self._loading_lock.acquire()
+        self._loading = False
+        self._loading_lock.release()
 
     def check_entry(self, entry):
         id_tokens = []
@@ -132,7 +165,41 @@ class Main:
                         return BAD_MISMATCH
         return GOOD
 
+class Main:
+    def __init__(self):
+        self.builder = Gtk.Builder()
+        self.builder.add_from_file("/home/mtwebster/bin/mocheck/mocheck.glade")
+        self.treebox = self.builder.get_object("treebox")
+        self.window = self.builder.get_object("window")
+        self.status = self.builder.get_object("status")
+        self.refresh_button = self.builder.get_object("refresh")
+        self.progress = self.builder.get_object("progress")
+        self.window.connect("destroy", Gtk.main_quit)
+
+        self.refresh_button.connect("clicked", self.on_refresh_clicked)
+
+        self.treeview = ThreadedTreeView(self.progress)
+
+        self.treebox.pack_start(self.treeview, True, True, 2)
+
+        self.treeview.get_selection().connect("changed", lambda x: self.selection_changed());
+        self.window.show_all()
+
+    def selection_changed(self):
+        model, treeiter = self.treeview.get_selection().get_selected()
+        if treeiter:
+            entry = self.treeview.model.get_value(treeiter, 1)
+            status = self.treeview.check_entry(entry)
+            if status == BAD_MISCOUNT:
+                self.status.set_text("Number of tokens does not match")
+            elif status == BAD_MISMATCH:
+                self.status.set_text("Tokens not in correct order")
+            else:
+                self.status.set_text("")
+
+    def on_refresh_clicked(self, button):
+        thread.start_new_thread(self.treeview.load_files, ())
+
 if __name__ == "__main__":
-    GObject.threads_init()
     Main()
     Gtk.main()
