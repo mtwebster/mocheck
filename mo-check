@@ -73,15 +73,18 @@ class ThreadedTreeView(Gtk.TreeView):
 
         cr = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn("MsgStr", cr, markup=4)
+        column.set_expand(True)
         cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR)
         cr.set_property('wrap-width', 450)
         cr.set_property('editable', True)
+
         cr.connect("edited", self.on_cell_edited)
         self.append_column(column)
 
         cr = Gtk.CellRendererPixbuf()
         column = Gtk.TreeViewColumn("Dirty", cr, pixbuf=6)
         column.set_cell_data_func(cr, self.dirty_pixbuf_func)
+        column.set_max_width(50)
         self.append_column(column)
 
         self._loading_queue = []
