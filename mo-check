@@ -145,6 +145,7 @@ class ThreadedTreeView(Gtk.TreeView):
 
     def clear(self):
         self._count = 0
+        self.progress.set_text(str(self._count))
         self._loading_queue_lock.acquire()
         self._loading_queue = []
         self._loading_queue_lock.release()
