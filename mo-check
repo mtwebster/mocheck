@@ -184,6 +184,7 @@ class Main:
 
         self.treeview.get_selection().connect("changed", lambda x: self.selection_changed());
         self.window.show_all()
+        thread.start_new_thread(self.treeview.load_files, ())
 
     def selection_changed(self):
         model, treeiter = self.treeview.get_selection().get_selected()
