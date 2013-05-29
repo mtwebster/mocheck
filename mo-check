@@ -179,7 +179,8 @@ class ThreadedTreeView(Gtk.TreeView):
         str_tokens = TokenList()
         msgid = entry.msgid
         msgstr = entry.msgstr
-        date_count = 0
+        id_date_count = 0
+        str_date_count = 0
         # for idx in range(len(msgstr)):
         #     if msgstr[idx] == '"':
         #         if msgstr[idx-1] != "\\":
@@ -192,13 +193,16 @@ class ThreadedTreeView(Gtk.TreeView):
                     subidx = 0
                     while True:
                         subidx += 1
-                        catch = msgid[idx+subidx]
-                        if allowed(catch):
-                            if catch in COMMON_DATE_TOKENS:
-                                date_count += 1
+                        try:
+                            catch = msgid[idx+subidx]
+                            if allowed(catch):
+                                if catch in COMMON_DATE_TOKENS:
+                                    id_date_count += 1
+                                token = msgid[idx:(idx+subidx+1)]
+                                id_tokens.add(token)
+                                break
+                        except IndexError:
                             break
-                    token = msgid[idx:(idx+subidx+1)]
-                    id_tokens.add(token)
 
         for idx in range(len(msgstr)):
             if msgstr[idx] == "%":
@@ -207,14 +211,19 @@ class ThreadedTreeView(Gtk.TreeView):
                     subidx = 0
                     while True:
                         subidx += 1
-                        catch = msgstr[idx+subidx]
-                        if allowed(catch):
+                        try:
+                            catch = msgstr[idx+subidx]
+                            if allowed(catch):
+                                if catch in COMMON_DATE_TOKENS:
+                                    str_date_count += 1
+                                token = msgstr[idx:idx+subidx+1]
+                                str_tokens.add(token)
+                                break
+                        except IndexError:
                             break
-                    token = msgstr[idx:idx+subidx+1]
-                    str_tokens.add(token)
         if msgstr != "":
             if (len(id_tokens) != len(str_tokens)):
-                if date_count >= DATE_THRESHOLD:
+                if id_date_count >= DATE_THRESHOLD or str_date_count >= DATE_THRESHOLD:
                     return BAD_MISCOUNT_MAYBE_DATE
                 else:
                     return BAD_MISCOUNT
@@ -223,7 +232,7 @@ class ThreadedTreeView(Gtk.TreeView):
                 for j in range(len(id_tokens)):
                     if id_tokens[j] != str_tokens[j]:
                         mismatch = True
-                if date_count >= DATE_THRESHOLD and mismatch:
+                if (id_date_count >= DATE_THRESHOLD or str_date_count >= DATE_THRESHOLD) and mismatch:
                     return BAD_MISMATCH_MAYBE_DATE
                 elif mismatch:
                     return BAD_MISMATCH
