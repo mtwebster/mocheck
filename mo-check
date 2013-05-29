@@ -11,14 +11,18 @@ GObject.threads_init()
 
 ALLOWED = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-COMMON_DATE_TOKENS = ["%M", "%Y", "%D", "%M", "%S"]
+COMMON_DATE_TOKENS = "HYDMSmy"
 DATE_THRESHOLD = 2
 
 GOOD = 0
 BAD_MISCOUNT = 1
 BAD_MISMATCH = 2
 BAD_UNESCAPED_QUOTE = 3
-BAD_MAYBE_DATE = 99
+
+BAD_EXCLUSIONS = 80
+
+BAD_MISCOUNT_MAYBE_DATE = 99
+BAD_MISMATCH_MAYBE_DATE = 100
 
 def allowed(char):
     return char in ALLOWED
@@ -35,6 +39,7 @@ class ThreadedTreeView(Gtk.TreeView):
 
         self.progress = progress
         self.datecheck = date_check
+        self._count = 0
         self.set_rules_hint(True)
         column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=2)
         self.append_column(column)
@@ -61,6 +66,7 @@ class ThreadedTreeView(Gtk.TreeView):
         self._loaded_data_lock = thread.allocate_lock()
 
     def clear(self):
+        self._count = 0
         self._loading_queue_lock.acquire()
         self._loading_queue = []
         self._loading_queue_lock.release()
@@ -94,6 +100,8 @@ class ThreadedTreeView(Gtk.TreeView):
             self.model.set_value(iter, 2, i[2])
             self.model.set_value(iter, 3, i[3])
             self.model.set_value(iter, 4, i[4])
+            self._count += 1
+            self.progress.set_text(str(self._count))
         return res
 
     def load_files(self):
@@ -139,7 +147,8 @@ class ThreadedTreeView(Gtk.TreeView):
                 for entry in to_load.mofile:
                     res = self.check_entry(entry)
                     exclude_dates = self.datecheck.get_active()
-                    if (res > GOOD and res < BAD_MAYBE_DATE) or (res == BAD_MAYBE_DATE and not exclude_dates):
+                    if (res > GOOD and res < BAD_MISCOUNT_MAYBE_DATE) or \
+                       (res > BAD_EXCLUSIONS and not exclude_dates):
                         self._loaded_data_lock.acquire()
                         self._loaded_data.append((to_load, entry, to_load.locale, entry.msgid, entry.msgstr))
                         self._loaded_data_lock.release()
@@ -153,7 +162,7 @@ class ThreadedTreeView(Gtk.TreeView):
         str_tokens = []
         msgid = entry.msgid
         msgstr = entry.msgstr
-
+        date_count = 0
         # for idx in range(len(msgstr)):
         #     if msgstr[idx] == '"':
         #         if msgstr[idx-1] != "\\":
@@ -168,6 +177,9 @@ class ThreadedTreeView(Gtk.TreeView):
                         subidx += 1
                         catch = msgid[idx+subidx]
                         if allowed(catch):
+                            print catch
+                            if catch in COMMON_DATE_TOKENS:
+                                date_count += 1
                             break
                     id_tokens.append(msgid[idx:(idx+subidx+1)])
 
@@ -184,20 +196,19 @@ class ThreadedTreeView(Gtk.TreeView):
                     str_tokens.append(msgstr[idx:idx+subidx+1])
         if msgstr != "":
             if (len(id_tokens) != len(str_tokens)):
-                return BAD_MISCOUNT
+                if date_count >= DATE_THRESHOLD:
+                    return BAD_MISCOUNT_MAYBE_DATE
+                else:
+                    return BAD_MISCOUNT
             else:
-                date_count = 0
                 mismatch = False
                 for j in range(len(id_tokens)):
                     if id_tokens[j] != str_tokens[j]:
                         mismatch = True
-                    if id_tokens[j] in COMMON_DATE_TOKENS:
-                        date_count += 1
-                if mismatch:
-                    if date_count > DATE_THRESHOLD:
-                        return BAD_MAYBE_DATE
-                    else:
-                        return BAD_MISMATCH
+                if date_count >= DATE_THRESHOLD and mismatch:
+                    return BAD_MISMATCH_MAYBE_DATE
+                elif mismatch:
+                    return BAD_MISMATCH
         return GOOD
 
 class Main:
