@@ -3,6 +3,8 @@
 import polib
 import sys
 import os
+#from threading import Thread
+import thread
 from gi.repository import Gtk, GObject, GLib, Pango
 
 tokentypes = ["%d", "%s", "%B", "%'d"]
@@ -19,7 +21,6 @@ class Mo:
 
 class Main:
     def __init__(self):
-        self.check_files()
         self.builder = Gtk.Builder()
         self.builder.add_from_file("/home/mtwebster/bin/mocheck/mocheck.glade")
         self.treebox = self.builder.get_object("treebox")
@@ -51,9 +52,12 @@ class Main:
 
         self.treeview.get_selection().connect("changed", lambda x: self.selection_changed());
 
-        self.refresh_model()
-
         self.window.show_all()
+
+        self.threaded_refresh()
+
+    def threaded_refresh(self):
+        thread.start_new_thread( self.check_files, ())
 
     def selection_changed(self):
         model, treeiter = self.treeview.get_selection().get_selected()
@@ -68,23 +72,13 @@ class Main:
                 self.status.set_text("")
 
     def on_refresh_clicked(self, button):
-        self.check_files()
-        self.refresh_model()
-
-    def refresh_model(self):
-        self.model = Gtk.TreeStore(object, object, str, str, str)
-        for mo in self.bad_mos:
-            for entry in mo.bad_entries:
-                iter = self.model.insert_before(None, None)
-                self.model.set_value(iter, 0, mo)
-                self.model.set_value(iter, 1, entry)
-                self.model.set_value(iter, 2, mo.locale)
-                self.model.set_value(iter, 3, entry.msgid)
-                self.model.set_value(iter, 4, entry.msgstr)
-        self.treeview.set_model(self.model)
+        self.threaded_refresh()
 
     def check_files(self):
+        print "thread start"
         self.bad_mos = []
+        self.model = Gtk.TreeStore(object, object, str, str, str)
+        self.treeview.set_model(self.model)
         for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
             for file in files:
                 if file.endswith(".mo"):
@@ -98,6 +92,12 @@ class Main:
                         res = self.check_entry(entry)
                         if res > GOOD:
                             self.register_bad(mo, entry)
+                            iter = self.model.insert_before(None, None)
+                            self.model.set_value(iter, 0, mo)
+                            self.model.set_value(iter, 1, entry)
+                            self.model.set_value(iter, 2, mo.locale)
+                            self.model.set_value(iter, 3, entry.msgid)
+                            self.model.set_value(iter, 4, entry.msgstr)
 
     def register_bad(self, mo, entry):
         if mo not in self.bad_mos:
