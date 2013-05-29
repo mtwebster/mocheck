@@ -9,11 +9,19 @@ import time
 from gi.repository import Gtk, GObject, GLib, Pango
 GObject.threads_init()
 
-tokentypes = ["%d", "%s", "%B", "%'d"]
+ALLOWED = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+COMMON_DATE_TOKENS = ["%M", "%Y", "%D", "%M", "%S"]
+DATE_THRESHOLD = 2
 
 GOOD = 0
 BAD_MISCOUNT = 1
 BAD_MISMATCH = 2
+BAD_UNESCAPED_QUOTE = 3
+BAD_MAYBE_DATE = 99
+
+def allowed(char):
+    return char in ALLOWED
 
 class Mo:
     def __init__(self, inst, locale):
@@ -22,10 +30,11 @@ class Mo:
         self.bad_entries = []
 
 class ThreadedTreeView(Gtk.TreeView):
-    def __init__(self, progress):
+    def __init__(self, progress, date_check):
         Gtk.TreeView.__init__(self)
 
         self.progress = progress
+        self.datecheck = date_check
         self.set_rules_hint(True)
         column = Gtk.TreeViewColumn("Language", Gtk.CellRendererText(), markup=2)
         self.append_column(column)
@@ -129,7 +138,8 @@ class ThreadedTreeView(Gtk.TreeView):
             if not finished:
                 for entry in to_load.mofile:
                     res = self.check_entry(entry)
-                    if res > GOOD:
+                    exclude_dates = self.datecheck.get_active()
+                    if (res > GOOD and res < BAD_MAYBE_DATE) or (res == BAD_MAYBE_DATE and not exclude_dates):
                         self._loaded_data_lock.acquire()
                         self._loaded_data.append((to_load, entry, to_load.locale, entry.msgid, entry.msgstr))
                         self._loaded_data_lock.release()
@@ -144,24 +154,49 @@ class ThreadedTreeView(Gtk.TreeView):
         msgid = entry.msgid
         msgstr = entry.msgstr
 
+        # for idx in range(len(msgstr)):
+        #     if msgstr[idx] == '"':
+        #         if msgstr[idx-1] != "\\":
+        #             return BAD_UNESCAPED_QUOTE
+
         for idx in range(len(msgid)):
             if msgid[idx] == "%":
-                for tt in tokentypes:
-                    if msgid[idx:idx+len(tt)] == tt:
-                        id_tokens.append(tt)
+                if msgid[idx-1] > -1 and msgid[idx-1] != "\\":
+                    catch = ""
+                    subidx = 0
+                    while True:
+                        subidx += 1
+                        catch = msgid[idx+subidx]
+                        if allowed(catch):
+                            break
+                    id_tokens.append(msgid[idx:(idx+subidx+1)])
 
         for idx in range(len(msgstr)):
             if msgstr[idx] == "%":
-                for tt in tokentypes:
-                    if msgstr[idx:idx+len(tt)] == tt:
-                        str_tokens.append(tt)
-
+                if msgstr[idx-1] > -1 and msgstr[idx-1] != "\\":
+                    catch = ""
+                    subidx = 0
+                    while True:
+                        subidx += 1
+                        catch = msgstr[idx+subidx]
+                        if allowed(catch):
+                            break
+                    str_tokens.append(msgstr[idx:idx+subidx+1])
         if msgstr != "":
             if (len(id_tokens) != len(str_tokens)):
                 return BAD_MISCOUNT
             else:
+                date_count = 0
+                mismatch = False
                 for j in range(len(id_tokens)):
                     if id_tokens[j] != str_tokens[j]:
+                        mismatch = True
+                    if id_tokens[j] in COMMON_DATE_TOKENS:
+                        date_count += 1
+                if mismatch:
+                    if date_count > DATE_THRESHOLD:
+                        return BAD_MAYBE_DATE
+                    else:
                         return BAD_MISMATCH
         return GOOD
 
@@ -174,11 +209,12 @@ class Main:
         self.status = self.builder.get_object("status")
         self.refresh_button = self.builder.get_object("refresh")
         self.progress = self.builder.get_object("progress")
+        self.datecheck = self.builder.get_object("datecheck")
         self.window.connect("destroy", Gtk.main_quit)
-
+        self.datecheck.connect("toggled", self.on_refresh_clicked)
         self.refresh_button.connect("clicked", self.on_refresh_clicked)
 
-        self.treeview = ThreadedTreeView(self.progress)
+        self.treeview = ThreadedTreeView(self.progress, self.datecheck)
 
         self.treebox.pack_start(self.treeview, True, True, 2)
 
@@ -195,6 +231,8 @@ class Main:
                 self.status.set_text("Number of tokens does not match")
             elif status == BAD_MISMATCH:
                 self.status.set_text("Tokens not in correct order")
+            elif status == BAD_UNESCAPED_QUOTE:
+                self.status.set_text("Bad quotes")
             else:
                 self.status.set_text("")
 
