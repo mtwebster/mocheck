@@ -177,7 +177,6 @@ class ThreadedTreeView(Gtk.TreeView):
                         subidx += 1
                         catch = msgid[idx+subidx]
                         if allowed(catch):
-                            print catch
                             if catch in COMMON_DATE_TOKENS:
                                 date_count += 1
                             break
@@ -241,7 +240,7 @@ class Main:
             if status == BAD_MISCOUNT:
                 self.status.set_text("Number of tokens does not match")
             elif status == BAD_MISMATCH:
-                self.status.set_text("Tokens not in correct order")
+                self.status.set_text("Tokens not in correct order or mismatch")
             elif status == BAD_UNESCAPED_QUOTE:
                 self.status.set_text("Bad quotes")
             else:
