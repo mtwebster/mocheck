@@ -27,6 +27,24 @@ BAD_MISMATCH_MAYBE_DATE = 100
 def allowed(char):
     return char in ALLOWED
 
+class TokenList(list):
+    def __init__(self):
+        list.__init__(self)
+        self.used_indices = []
+
+    def add(self, entry):
+        position = -1
+        if "$" in entry:
+            position = entry[1:entry.find("$")]
+            self.used_indices.append(position)
+            entry = entry.replace("$", "")
+            entry = entry.replace(position, "")
+            position = int(position)
+        if position == -1 or len(self) == 0 or position > len(self):
+            self.append(entry)
+        else:
+            self.insert(position - 1, entry)
+
 class Mo:
     def __init__(self, inst, locale):
         self.mofile = inst
@@ -158,8 +176,8 @@ class ThreadedTreeView(Gtk.TreeView):
         self._loading_lock.release()
 
     def check_entry(self, entry):
-        id_tokens = []
-        str_tokens = []
+        id_tokens = TokenList()
+        str_tokens = TokenList()
         msgid = entry.msgid
         msgstr = entry.msgstr
         date_count = 0
@@ -180,7 +198,8 @@ class ThreadedTreeView(Gtk.TreeView):
                             if catch in COMMON_DATE_TOKENS:
                                 date_count += 1
                             break
-                    id_tokens.append(msgid[idx:(idx+subidx+1)])
+                    token = msgid[idx:(idx+subidx+1)]
+                    id_tokens.add(token)
 
         for idx in range(len(msgstr)):
             if msgstr[idx] == "%":
@@ -192,7 +211,8 @@ class ThreadedTreeView(Gtk.TreeView):
                         catch = msgstr[idx+subidx]
                         if allowed(catch):
                             break
-                    str_tokens.append(msgstr[idx:idx+subidx+1])
+                    token = msgstr[idx:idx+subidx+1]
+                    str_tokens.add(token)
         if msgstr != "":
             if (len(id_tokens) != len(str_tokens)):
                 if date_count >= DATE_THRESHOLD:
