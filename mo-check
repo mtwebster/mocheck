@@ -10,7 +10,6 @@ from gi.repository import Gtk, GObject, GLib, Pango
 GObject.threads_init()
 
 ALLOWED = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
 COMMON_DATE_TOKENS = "HYDMSmy"
 DATE_THRESHOLD = 2
 
