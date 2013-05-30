@@ -47,7 +47,7 @@
             <property name="visible">True</property>
             <property name="can_focus">False</property>
             <attributes>
-              <attribute name="size" value="20000"/>
+              <attribute name="size" value="15000"/>
             </attributes>
           </object>
           <packing>

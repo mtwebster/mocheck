@@ -333,8 +333,12 @@ class Main:
             status = self.treeview.check_entry(entry)
             if status == BAD_MISCOUNT:
                 self.status.set_text("Number of tokens does not match")
+            elif status == BAD_MISCOUNT_MAYBE_DATE:
+                self.status.set_text("Number of tokens does not match (could be a date/time)")
             elif status == BAD_MISMATCH:
                 self.status.set_text("Tokens not in correct order or mismatch")
+            elif status == BAD_MISMATCH_MAYBE_DATE:
+                self.status.set_text("Tokens not in correct order or mismatch (could be a date/time)")
             elif status == BAD_UNESCAPED_QUOTE:
                 self.status.set_text("Bad quotes")
             else:
