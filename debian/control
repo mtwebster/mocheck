@@ -1,0 +1,12 @@
+Source: mocheck
+Section: admin
+Priority: optional
+Maintainer: Michael Webster <miketwebster@gmail.com>
+Build-Depends: debhelper (>= 5)
+Standards-Version: 3.7.2
+
+Package: mocheck
+Architecture: all
+Depends: python (>= 2.4), python (<< 3), python-polib
+Description: .mo and .po file checker/fixer
+ Detect and repair errors in translation files
