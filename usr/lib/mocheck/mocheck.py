@@ -311,6 +311,26 @@ class ThreadedTreeView(Gtk.TreeView):
 
 class Main:
     def __init__(self):
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "-po":
+                t = PO_EXT
+                self.start(t)
+            elif sys.argv[1] == "-mo":
+                t = MO_EXT
+                self.start(t)
+            else:
+                self.end()
+        else:
+            self.end()
+
+    def end(self):
+        print "Usage:"
+        print "       mocheck -po:  scan recursively from current directory for .po files"
+        print "       mocheck -mo:  scan recursively from current directory for .mo files"
+        print " "
+        quit()
+
+    def start(self, t):
         self.builder = Gtk.Builder()
         self.builder.add_from_file("/usr/lib/mocheck/mocheck.glade")
         self.treebox = self.builder.get_object("treebox")
@@ -319,25 +339,20 @@ class Main:
         self.refresh_button = self.builder.get_object("refresh")
         self.progress = self.builder.get_object("progress")
         self.datecheck = self.builder.get_object("datecheck")
+        self.save = self.builder.get_object("save")
+        self.revert = self.builder.get_object("revert")
+
         self.window.connect("destroy", Gtk.main_quit)
         self.datecheck.connect("toggled", self.on_refresh_clicked)
         self.refresh_button.connect("clicked", self.on_refresh_clicked)
-        self.save = self.builder.get_object("save")
         self.save.connect("clicked", self.on_save_clicked)
-        self.revert = self.builder.get_object("revert")
         self.revert.connect("clicked", self.on_revert_clicked)
 
-        if len(sys.argv) > 1 and sys.argv[1] == "-po":
-            t = PO_EXT
-        else:
-            t = MO_EXT
-
         self.treeview = ThreadedTreeView(self, t)
-
         self.treebox.add(self.treeview)
-
         self.treeview.get_selection().connect("changed", lambda x: self.selection_changed());
         self.window.show_all()
+
         thread.start_new_thread(self.treeview.load_files, ())
 
     def selection_changed(self):
