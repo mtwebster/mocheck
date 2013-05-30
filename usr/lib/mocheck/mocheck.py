@@ -324,6 +324,14 @@ class Main:
             self.end()
 
     def end(self):
+        print ""
+        print "mocheck: a .po and .mo translation file checker and tweak tool."
+        print ""
+        print "mocheck searches for errors in format tokens, such as incorrect"
+        print "number, non-matching, or out of order conditions.  mocheck will"
+        print "then allow you to fix the offending translations by adding order"
+        print "codes (1$, 2%, etc..) or missing tokens."
+        print ""
         print "Usage:"
         print "       mocheck -po:  scan recursively from current directory for .po files"
         print "       mocheck -mo:  scan recursively from current directory for .mo files"
