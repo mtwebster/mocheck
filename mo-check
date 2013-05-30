@@ -191,15 +191,18 @@ class ThreadedTreeView(Gtk.TreeView):
         self.clear()
         for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
             for file in files:
-                if file.endswith(self.type):
-                    path, junk = os.path.split(root)
-                    path, locale = os.path.split(path)
-                    if self.type == PO_EXT:
-                        mo_inst = polib.pofile(os.path.join(root, file))
-                    else:
+                if self.type == MO_EXT:
+                    if file.endswith(MO_EXT):
+                        path, junk = os.path.split(root)
+                        path, locale = os.path.split(path)
                         mo_inst = polib.mofile(os.path.join(root, file))
-                    mo = Mo(mo_inst, locale, os.path.join(root, file))
-                    self.check_file(mo)
+                        mo = Mo(mo_inst, locale, os.path.join(root, file))
+                        self.check_file(mo)
+                else:
+                    if file.endswith(PO_EXT):
+                        mo_inst = polib.pofile(os.path.join(root, file))
+                        mo = Mo(mo_inst, file, os.path.join(root, file))
+                        self.check_file(mo)
         self.progress.set_fraction(1.0)
 
     def check_file(self, mofile):
