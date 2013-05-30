@@ -98,8 +98,7 @@ class ThreadedTreeView(Gtk.TreeView):
 
     def on_cell_edited(self, renderer, path, new_text):
         self.model[path][4] = new_text
-        self.model[path][5] = new_text.decode('utf-8') != self.model[path][1].msgstr
-        print new_text, self.model[path][1].msgstr
+        self.model[path][5] = new_text != self.model[path][1].msgstr.encode('utf-8')
         self.update_buttons()
 
     def dirty_pixbuf_func(self, col, cell, model, iter, data):
@@ -128,7 +127,7 @@ class ThreadedTreeView(Gtk.TreeView):
         while iter != None:
             if self.model.get_value(iter, 5):
                 entry = self.model.get_value(iter, 1)
-                entry.msgstr = self.model.get_value(iter, 4)
+                entry.msgstr = self.model.get_value(iter, 4).decode('utf-8')
                 self.model.get_value(iter, 0).mofile.save()
                 self.model.set_value(iter, 5, False)
             iter = self.model.iter_next(iter)
