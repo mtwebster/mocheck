@@ -312,7 +312,7 @@ class ThreadedTreeView(Gtk.TreeView):
 class Main:
     def __init__(self):
         self.builder = Gtk.Builder()
-        self.builder.add_from_file("/home/mtwebster/bin/mocheck/mocheck.glade")
+        self.builder.add_from_file("/usr/lib/mocheck/mocheck.glade")
         self.treebox = self.builder.get_object("treebox")
         self.window = self.builder.get_object("window")
         self.status = self.builder.get_object("status")
