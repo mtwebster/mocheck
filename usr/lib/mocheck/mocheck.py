@@ -330,7 +330,7 @@ class Main:
         print "mocheck searches for errors in format tokens, such as incorrect"
         print "number, non-matching, or out of order conditions.  mocheck will"
         print "then allow you to fix the offending translations by adding order"
-        print "codes (1$, 2%, etc..) or missing tokens."
+        print "codes (%1$d, %2$s, etc..) or missing tokens."
         print ""
         print "Usage:"
         print "       mocheck -po:  scan recursively from current directory for .po files"
