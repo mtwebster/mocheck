@@ -13,6 +13,9 @@ ALLOWED = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 COMMON_DATE_TOKENS = "HYDMSmy"
 DATE_THRESHOLD = 2
 
+MO_EXT = ".mo"
+PO_EXT = ".po"
+
 GOOD = 0
 BAD_MISCOUNT = 1
 BAD_MISMATCH = 2
@@ -52,9 +55,9 @@ class Mo:
         self.bad_entries = []
 
 class ThreadedTreeView(Gtk.TreeView):
-    def __init__(self, parent):
+    def __init__(self, parent, t):
         Gtk.TreeView.__init__(self)
-
+        self.type = t
         self.progress = parent.progress
         self.datecheck = parent.datecheck
         self.revert = parent.revert
@@ -188,10 +191,13 @@ class ThreadedTreeView(Gtk.TreeView):
         self.clear()
         for root, subFolders, files in os.walk(os.getcwd(),topdown=False):
             for file in files:
-                if file.endswith(".mo"):
+                if file.endswith(self.type):
                     path, junk = os.path.split(root)
                     path, locale = os.path.split(path)
-                    mo_inst = polib.mofile(os.path.join(root, file))
+                    if self.type == PO_EXT:
+                        mo_inst = polib.pofile(os.path.join(root, file))
+                    else:
+                        mo_inst = polib.mofile(os.path.join(root, file))
                     mo = Mo(mo_inst, locale, os.path.join(root, file))
                     self.check_file(mo)
         self.progress.set_fraction(1.0)
@@ -318,7 +324,12 @@ class Main:
         self.revert = self.builder.get_object("revert")
         self.revert.connect("clicked", self.on_revert_clicked)
 
-        self.treeview = ThreadedTreeView(self)
+        if len(sys.argv) > 1 and sys.argv[1] == "-po":
+            t = PO_EXT
+        else:
+            t = MO_EXT
+
+        self.treeview = ThreadedTreeView(self, t)
 
         self.treebox.add(self.treeview)
 
