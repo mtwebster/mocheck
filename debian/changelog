@@ -1,4 +1,22 @@
-mocheck (1.0.0) unstable; urgency=low
+mocheck (1.0.2ubuntu2) raring; urgency=low
+
+  * Try this again
+
+ -- Michael Webster <miketwebster@gmail.com>  Thu, 30 May 2013 20:11:30 -0400
+
+mocheck (1.0.1ubuntu2) raring; urgency=low
+
+  * Fix email address
+
+ -- Michael Webster <miketwebster@gmail.com>  Thu, 30 May 2013 20:04:30 -0400
+
+mocheck (1.0.0ubuntu1) raring; urgency=low
+
+  * Fix distro series
+
+ -- Michael Webster <mtwebster@mint14-vb>  Thu, 30 May 2013 20:01:31 -0400
+
+mocheck (1.0.0) raring; urgency=low
 
   * Initial packaging
 
