@@ -1,3 +1,9 @@
+mocheck (1.0.3ubuntu3) UNRELEASED; urgency=low
+
+  * Version bump
+
+ -- Michael Webster <mtwebster@mint14-vb>  Fri, 31 May 2013 09:24:57 -0400
+
 mocheck (1.0.2ubuntu2) raring; urgency=low
 
   * Try this again
